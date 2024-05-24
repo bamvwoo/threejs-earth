@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js"
+            }
+        }
+    </script>
+</head>
+<style>
+    body, html {
+        margin: 0;
+        padding: 0;
+        overflow: hidden; /* Optional: Disable scroll */
+    }
+
+    #btns {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 1;
+        list-style: none;
+        margin: 0px;
+        padding: 0px;
+        min-width: 220px;
+    }
+
+    #btns > li {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        background-color: rgba(255, 255, 255, 0.5);
+        padding: 5px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+
+        & > * {
+            width: 100%;
+        }
+
+        &:has(> select), &:has(> button) {
+            padding: 0px;
+
+            & > select, & > button {
+                width: 100%;
+                padding: 5px;
+                border: none;
+                background-color: transparent;
+                font-size: 15px;
+                border-radius: 5px;
+            }
+
+            & > select:hover, & > button:hover {
+                cursor: pointer;
+                background-color: rgba(255, 255, 255, 0.6);
+            }
+
+            & > select:focus {
+                outline: none;
+            }
+        }
+
+        & > h4 {
+            margin: 0;
+            margin-bottom: 5px;
+        }
+    }
+
+    label.input-label {
+        margin-right: 5px;
+        font-size: 15px;
+        min-width: 45px;
+    }
+
+    .range-area {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+
+        & > .range-text {
+            width: 25px;
+            font-size: 12px;
+            text-align: center;
+        }
+    }
+</style>
+<body>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'https://threejs.org/examples/jsm/controls/OrbitControls.js';
+    
+        class SphereCurve extends THREE.Curve {
+            constructor(point1, point2) {
+                super();
+                this.point1 = point1;
+                this.point2 = point2;
+            }
+
+            getPoint(t) {
+                var vector = new THREE.Vector3().lerpVectors(this.point1, this.point2, t);
+                return vector.normalize();
+            }
+        }
+
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        var renderer = new THREE.WebGLRenderer({ antialias: true });
+    
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; // Enable Shadow
+        document.body.appendChild(renderer.domElement);
+
+        // Add an event listener for window resize
+        window.addEventListener('resize', function() {
+            // Update camera aspect ratio
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            // Update renderer size
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    
+        var sphereRadius = 1; // Adjust this value as needed
+        var geometry = new THREE.SphereGeometry(sphereRadius, 32, 32);
+    
+        // Load earth texture
+        var textureLoader = new THREE.TextureLoader();
+        var earthTexture = textureLoader.load('./2k_earth_daymap.jpg');
+    
+        var material = new THREE.MeshStandardMaterial({map: earthTexture}); // Apply earth texture
+        var sphere = new THREE.Mesh(geometry, material);
+    
+        sphere.castShadow = true; // Enable sphere to cast shadow
+        sphere.receiveShadow = true; // Enable sphere to receive shadow
+
+        var tilt = 0;
+        sphere.rotation.z = THREE.MathUtils.degToRad(tilt);
+
+        scene.add(sphere);
+
+        // Create the atmosphere geometry
+        var atmosphereGeometry = new THREE.SphereGeometry(1.1, 32, 32); // Slightly larger radius
+
+        // Create the atmosphere material
+        var atmosphereMaterial = new THREE.ShaderMaterial({
+            vertexShader: `
+                varying vec3 vNormal;
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vNormal;
+                void main() {
+                    float intensity = pow(0.6 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+                    gl_FragColor = vec4(0.2, 0.6, 1.0, 1.0) * intensity;
+                }
+            `,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+            transparent: true
+        });
+
+        // Create the atmosphere mesh
+        var atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+
+        // Add the atmosphere to the scene
+        scene.add(atmosphere);
+    
+        // Add light
+        var light = new THREE.PointLight(0xffffff, 50, 100);
+        light.castShadow = true; // Enable light to cast shadow
+
+        scene.add(light);
+    
+        camera.position.z = 5;
+    
+        // Add OrbitControls
+        var controls = new OrbitControls(camera, renderer.domElement);
+        controls.enabled = false; // Disable OrbitControls
+    
+        var drag = false;
+        var previousMousePosition = {
+            x: 0,
+            y: 0
+        };
+
+        function mouseDownHandler(e) {
+            if (e.button === 1) {
+                drag = true;
+                document.body.style.cursor = 'move'; // Change the cursor to a rotating cursor
+                previousMousePosition = {
+                    x: e.offsetX,
+                    y: e.offsetY
+                };
+            } else if (e.button === 2) {}
+        }
+
+        function mouseUpHandler(e) {
+            if (drag && e.button === 1) {
+                drag = false;
+            } else if (e.button === 2) {}
+            document.body.style.cursor = 'default'; // Change the cursor to a default cursor
+        }
+
+        function mouseMoveHandler(e) {
+            if (drag) {
+                var deltaMove = {
+                    x: e.offsetX - previousMousePosition.x,
+                    y: e.offsetY - previousMousePosition.y
+                };
+    
+                var deltaRotationQuaternion = new THREE.Quaternion()
+                    .setFromAxisAngle(
+                        rotationAxis,
+                        toRadians(deltaMove.x * 0.1)
+                    );
+
+                sphere.quaternion.multiplyQuaternions(deltaRotationQuaternion, sphere.quaternion);
+        
+                previousMousePosition = {
+                    x: e.offsetX,
+                    y: e.offsetY
+                };
+            }
+        }
+        
+        // Add mouse event listeners to canvas element
+        renderer.domElement.addEventListener('mousedown', mouseDownHandler);
+        renderer.domElement.addEventListener('mouseup', mouseUpHandler);
+        renderer.domElement.addEventListener('mousemove', mouseMoveHandler);
+
+        var targetFov = camera.fov;
+        var zoomSpeed = 0.1;
+
+        document.addEventListener('wheel', function(e) {
+            // Adjust the camera's field of view
+            targetFov -= e.deltaY * 0.05;
+            // Limit the fov within a certain range
+            targetFov = THREE.MathUtils.clamp(targetFov, 20, 80);
+        });
+        
+        var points = []; // Create an array to store the points
+
+        // An object to store the lines connected to each point
+        var lines = [];
+
+        var lineMaterial = new THREE.MeshBasicMaterial({color: 0x000000});
+
+        var clock = new THREE.Clock(); // Create a clock
+
+        // Create an object to move along the curve
+        var movingObjectGeometry = new THREE.SphereGeometry(0.05, 32, 32);
+        var movingObjectMaterial = new THREE.MeshBasicMaterial({color: 0xff00ff});
+        var movingObject = new THREE.Mesh(movingObjectGeometry, movingObjectMaterial);
+
+        // Add the moving object to the sphere
+        sphere.add(movingObject);
+
+        // Set the initial time and speed for the animation
+        var startTime = clock.getElapsedTime();
+        var movingSpeed = 0.5; // Adjust the speed as needed
+
+        // Create a placeholder for the curve
+        var curves = [];
+
+        // Create an index to keep track of the current curve
+        var currentCurveIndex = 0;
+
+        let currentCurvePosition = 0;
+
+        function animateMovingObject() {
+            if (curves.length > 0) {
+                var currentTime = clock.getElapsedTime();
+                var deltaTime = currentTime - startTime;
+
+                // Calculate the position along the curve based on the elapsed time and speed
+                const curvePosition = currentCurvePosition + deltaTime * movingSpeed;
+
+                // If the object has reached the end of the current curve, move to the next curve
+                if (curvePosition >= 1) {
+                    currentCurvePosition = 0; // Reset curve position
+                    currentCurveIndex = (currentCurveIndex + 1) % curves.length; // Move to next curve
+                    startTime = currentTime; // Reset start time
+                } else {
+                    currentCurvePosition = curvePosition; // Update curve position
+                }
+
+                // Set the position of the moving object based on the curve position
+                movingObject.position.copy(curves[currentCurveIndex].getPoint(currentCurvePosition));
+
+                // Update the start time for the next frame
+                startTime = currentTime;
+            }
+
+            // Request the next frame for animation
+            requestAnimationFrame(animateMovingObject);
+        }
+
+        // Start the animation
+        animateMovingObject();
+
+        // Create a Raycaster
+        var raycaster = new THREE.Raycaster();
+        var mouse = new THREE.Vector2();
+
+        function generateClickedPoint(e) {
+            if (e.button !== 0) return; // Only handle left-clicks
+
+            // Convert the mouse position to normalized device coordinates
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+           
+            // Calculate objects intersecting the picking ray
+            var intersects = raycaster.intersectObjects([sphere], false);
+
+            if (intersects.length > 0) {
+                // The first intersected object is the sphere
+                var point = intersects[0].point;
+
+                // Convert the intersected point from world coordinates to local coordinates
+                sphere.worldToLocal(point);
+
+                // Create a new mesh for the point
+                var geometry = new THREE.SphereGeometry(0.01, 32, 32);
+                var material = new THREE.MeshBasicMaterial({color: 0x00ff00});
+                var pointMesh = new THREE.Mesh(geometry, material);
+                pointMesh.name = "clickedPoint";
+
+                // Set the position of the point mesh to the intersected point
+                pointMesh.position.set(point.x, point.y, point.z);
+
+                // Add the point to the points array
+                var snapThreshold = 0.05; // Set the snap threshold
+                var closestPointMesh = points.reduce((closest, current) => {
+                    var distance = current.position.distanceTo(pointMesh.position);
+                    return distance < closest.distance ? {distance, pointMesh: current} : closest;
+                }, {distance: Infinity, pointMesh: null});
+
+                if (closestPointMesh.distance < snapThreshold) {
+                    points.push(closestPointMesh.pointMesh);
+                } else {
+                    // Add the point mesh to the sphere
+                    sphere.add(pointMesh);
+
+                    points.push(pointMesh);
+                }
+
+                // If there are at least two points, create a line
+                if (points.length >= 2) {
+                    // Get the last two points
+                    var lastTwoPoints = points.slice(-2);
+
+                    // Calculate the direction vectors of the two points
+                    var dir1 = lastTwoPoints[0].position.clone().sub(sphere.position).normalize();
+                    var dir2 = lastTwoPoints[1].position.clone().sub(sphere.position).normalize();
+
+                    // Calculate the angle between the two direction vectors
+                    var angle = dir1.angleTo(dir2);
+
+                    // Calculate the rotation axis
+                    var axis = new THREE.Vector3().crossVectors(dir1, dir2).normalize();
+
+                    // Create a quaternion using the rotation axis and half the angle
+                    var quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle / 2);
+
+                    // Apply the quaternion to the first direction vector to get the midpoint
+                    var midDir = dir1.clone().applyQuaternion(quaternion);
+
+                    // Scale this direction vector by the radius of the sphere to get a new point on the surface of the sphere
+                    var midPointOnSurface = midDir.multiplyScalar(sphere.geometry.parameters.radius);
+
+                    // Calculate the distance between the two points
+                    var distance = lastTwoPoints[0].position.distanceTo(lastTwoPoints[1].position);
+
+                    // 중간 지점에서 일정 높이를 더해 새로운 점을 생성합니다.
+                    var height = 0.5 * Math.pow(distance, 2); // 높이를 무작위로 설정합니다.
+                    var peakPoint = midPointOnSurface.clone().add(midPointOnSurface.clone().normalize().multiplyScalar(height));
+
+                    // 이 세 점을 이용해 포물선을 그립니다.
+                    var curve = new THREE.QuadraticBezierCurve3(lastTwoPoints[0].position, peakPoint, lastTwoPoints[1].position);
+
+                    // Add the new curve to the curves array
+                    curves.push(curve);
+
+                    // 포물선을 그리기 위한 점들을 생성합니다.
+                    var curvePoints = curve.getPoints(50);
+                    var curveGeometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
+
+                    // 포물선을 그리는 라인을 생성합니다.
+                    var curveMaterial = new THREE.LineBasicMaterial({color: 0xff0000});
+                    var curveObject = new THREE.Line(curveGeometry, curveMaterial);
+
+                    // 포물선을 씬에 추가합니다.
+                    sphere.add(curveObject);
+                    lines.push(curveObject);
+
+                    movingObject.position.copy(curvePoints[0]);
+
+                    // Set the initial time and speed for the animation
+                    startTime = clock.getElapsedTime();
+                }
+            }
+        }
+
+        function toRadians(angle) {
+            return angle * (Math.PI / 180);
+        }
+
+        var rotateTilt = 23.5;
+        var rotationAxis = new THREE.Vector3(0, Math.cos(THREE.MathUtils.degToRad(rotateTilt)), Math.sin(THREE.MathUtils.degToRad(rotateTilt)));
+
+        document.getElementById("toggleMode").addEventListener("change", function(e) {
+            var value = e.target.value;
+
+            if (value === "drawMode") {
+                document.addEventListener('mousedown', generateClickedPoint);
+            } else {
+                clock.getDelta();
+                document.removeEventListener('mousedown', generateClickedPoint);
+            }
+        });
+
+        document.getElementById("clearBtn").addEventListener("click", function() {
+            points.forEach(point => sphere.remove(point));
+            points = [];
+
+            lines.forEach(line => sphere.remove(line));
+            lines = [];
+            
+            var event = new Event('input', {
+                bubbles: true,
+                cancelable: true,
+            });
+
+            sphere.remove(movingObject);
+            
+            const sphereSizeInput = document.getElementById('sphereSize');
+            sphereSizeInput.value = 1;
+            sphereSizeInput.dispatchEvent(event);
+        });
+
+        document.getElementById('sphereSize').addEventListener('input', function(e) {
+            var newSize = parseFloat(e.target.value);
+            sphere.scale.set(newSize, newSize, newSize);
+            atmosphere.scale.set(newSize, newSize, newSize);
+
+            document.querySelector('#sphereSize + .range-text').textContent = newSize;
+        });
+
+        // Get the sliders from the HTML
+        var lightAzimuthSlider = document.getElementById('lightAzimuth');
+        var lightElevationSlider = document.getElementById('lightElevation');
+        var lightItensitySlider = document.getElementById('lightIntensity');
+
+        // Function to update the light direction
+        function updateLightDirection() {
+            var lightAzimuth = THREE.MathUtils.degToRad(lightAzimuthSlider.value);
+            var lightElevation = THREE.MathUtils.degToRad(lightElevationSlider.value);
+            var lightIntensity = lightItensitySlider.value;
+            var distance = 5;
+
+            light.position.x = distance * Math.cos(lightAzimuth) * Math.cos(lightElevation);
+            light.position.y = distance * Math.sin(lightElevation);
+            light.position.z = distance * Math.sin(lightAzimuth) * Math.cos(lightElevation);
+
+            light.intensity = lightIntensity;
+
+            document.querySelector('#lightAzimuth + span.range-text').textContent = lightAzimuthSlider.value;
+            document.querySelector('#lightElevation + span.range-text').textContent = lightElevationSlider.value;
+            document.querySelector('#lightIntensity + span.range-text').textContent = lightItensitySlider.value;
+        }
+
+        // Update the light direction initially
+        updateLightDirection();
+
+        // Add event listeners to the sliders
+        lightAzimuthSlider.addEventListener('input', updateLightDirection);
+        lightElevationSlider.addEventListener('input', updateLightDirection);
+        lightItensitySlider.addEventListener('input', updateLightDirection);
+
+        document.getElementById('rotateSpeed').addEventListener('input', function(e) {
+            rotateSpeed = parseFloat(e.target.value);
+            document.querySelector('#rotateSpeed + .range-text').textContent = rotateSpeed;
+        });
+
+        function addStars() {
+            let starGeometry = new THREE.BufferGeometry();
+
+            let vertices = [];
+            for (let i = 0; i < Math.random() * 3000; i++) {
+                vertices.push(
+                    THREE.MathUtils.randFloatSpread(2000), // x
+                    THREE.MathUtils.randFloatSpread(2000), // y
+                    THREE.MathUtils.randFloatSpread(2000)  // z
+                );
+            }
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+
+            let starMaterial = new THREE.PointsMaterial({ color: 0x888888, size: 5.0 });
+            let stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+        }
+
+        addStars();
+
+        document.addEventListener('mousemove', function(e) {
+            // Convert the mouse position to normalized device coordinates
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            // Calculate objects intersecting the picking ray
+            var intersects = raycaster.intersectObjects(scene.children);
+
+            // Check if the mouse is over a point
+            var isOverPoint = intersects.some(function(intersect) {
+                return intersect.object.name === 'clickedPoint';
+            });
+
+            // Change the cursor style
+            document.body.style.cursor = isOverPoint ? 'pointer' : 'default';
+        });
+
+        var rotateSpeed = 0.5;
+        var animate = function () {
+            requestAnimationFrame(animate);
+
+            // Gradually adjust the camera's field of view
+            if (Math.abs(camera.fov - targetFov) > 0.01) {
+                camera.fov += (targetFov - camera.fov) * zoomSpeed;
+                camera.updateProjectionMatrix(); // Update the camera's projection matrix
+            }
+            
+            var isRotating = document.getElementById("toggleMode").value === "rotateMode";
+            if (isRotating) {
+                var deltaTime = clock.getDelta(); // Get the time since the last frame
+    
+                var rotationQuaternion = new THREE.Quaternion();
+                rotationQuaternion.setFromAxisAngle(rotationAxis, rotateSpeed * deltaTime);
+                sphere.quaternion.multiplyQuaternions(rotationQuaternion, sphere.quaternion);
+            }
+
+            renderer.render(scene, camera);
+        };
+    
+        animate();
+    </script>
+    <ul id="btns">
+        <li>
+            <select id="toggleMode">
+                <option value="rotateMode">회전모드</option>
+                <option value="drawMode">그리기모드</option>
+            </select>
+        </li>
+        <li>
+            <h4>구체</h4>
+            <div class="range-area">
+                <label for="sphereSize" class="input-label">스케일</label>
+                <input type="range" id="sphereSize" min="0.5" max="2" step="0.01" value="1">
+                <span class="range-text">1</span>
+            </div>
+            <div class="range-area">
+                <label for="rotateSpeed" class="input-label">속도</label>
+                <input type="range" id="rotateSpeed" min="0.1" max="1" step="0.1" value="0.5">
+                <span class="range-text">0.5</span>
+            </div>
+        </li>
+        <li>
+            <h4>광원</h4>
+            <div class="range-area">
+                <label for="lightAzimuth" class="input-label">방위각</label>
+                <input type="range" id="lightAzimuth" min="0" max="360" step="1" value="90">
+                <span class="range-text">90</span>
+            </div>
+            <div class="range-area">
+                <label for="lightElevation" class="input-label">고도</label>
+                <input type="range" id="lightElevation" min="1" max="360" step="1" value="1">
+                <span class="range-text">1</span>
+            </div>
+            <div class="range-area">
+                <label for="lightIntensity" class="input-label">강도</label>
+                <input type="range" id="lightIntensity" min="1" max="100" step="1" value="50">
+                <span class="range-text">50</span>
+            </div>
+        <li>
+            <button id="clearBtn">초기화</button>
+        </li>
+    </div>
+</body>
+</html>
