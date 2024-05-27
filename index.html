@@ -302,9 +302,6 @@
                 // Update the start time for the next frame
                 startTime = currentTime;
             }
-
-            // Request the next frame for animation
-            requestAnimationFrame(animateMovingObject);
         }
 
         // Start the animation
@@ -555,6 +552,7 @@
                 sphere.quaternion.multiplyQuaternions(rotationQuaternion, sphere.quaternion);
             }
 
+            animateMovingObject();
             renderer.render(scene, camera);
         };
     
