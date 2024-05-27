@@ -301,6 +301,9 @@
 
                 // Update the start time for the next frame
                 startTime = currentTime;
+            } else {
+                // 초기화 되었을 때 이동 객체를 중심에 고정
+                movingObject.position.set(0, 0, 0);
             }
         }
 
@@ -437,13 +440,23 @@
 
             lines.forEach(line => sphere.remove(line));
             lines = [];
-            
+
+            // 포물선과 관련된 변수들 초기화
+            curves = [];
+            currentCurveIndex = 0;
+            currentCurvePosition = 0;
+
+            sphere.remove(movingObject);
+            movingObject.position.set(0, 0, 0); // 초기 위치로 이동 객체 설정
+
+            // 재생성을 위한 추가 코드
+            movingObject = new THREE.Mesh(movingObjectGeometry, movingObjectMaterial);
+            sphere.add(movingObject);
+
             var event = new Event('input', {
                 bubbles: true,
                 cancelable: true,
             });
-
-            sphere.remove(movingObject);
             
             const sphereSizeInput = document.getElementById('sphereSize');
             sphereSizeInput.value = 1;
